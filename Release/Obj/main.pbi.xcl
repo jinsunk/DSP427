@@ -1,4 +1,4 @@
-"D:\Projects\Promet-S\DSP427\User\src\console.c"
+"D:\Projects\Promet-S\DSP427\Common\src\main.c"
 -std=c99
 -ferror-limit=100
 -I
@@ -40,7 +40,7 @@ C:\Program Files (x86)\IAR Systems\Embedded Workbench 7.5\arm\CMSIS\Include
 -DSTM32F427X=1
 -DUSE_STDPERIPH_DRIVER=1
 -DHSE_VALUE=25000000L
--DDEBUG=1
+-DNDEBUG=1
 -DARM_MATH_CM4=1
 -D__CHAR_BITS__=8
 -D__CHAR_MAX__=0xff

@@ -80,9 +80,9 @@ extern void board_SetNandWriteEnable(void);
 /* ----------------------------------- */
 /* Console functions */
 /* ----------------------------------- */
-#define	DEBUG_COMPORT	USART1
-#define	DEBUG_IRQn		USART1_IRQn
-#define	DEBUG_IRQFUNC	USART1_IRQHandler
+#define	CONPORT			USART1
+#define	CONPORT_IRQ		USART1_IRQn
+#define	CONPORT_HANDLER	USART1_IRQHandler
 
 void _UART1_Init(void);
 /* ------------------------------------- */

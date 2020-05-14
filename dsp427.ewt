@@ -2418,6 +2418,9 @@
   </group>
   <group>
     <name>User</name>
+    <file>
+      <name>$PROJ_DIR$\User\src\console.c</name>
+    </file>
   </group>
   <file>
     <name>$PROJ_DIR$\Target\stm32f427xI.icf</name>

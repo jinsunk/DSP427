@@ -1,13 +1,15 @@
 #include "sysmsg.h"
 #include "procmsg.h"
 
-
 #include "console.h"
+#include "board.h"
 
 #define	DEBUG_MSG
 
-#include <stdio.h>			// for printf, vsprintf
-#include <stdarg.h>			// va_list
+#include <stdio.h>		// for printf, vsprintf
+#include <stdarg.h>		// va_list
+#include <string.h>		// memset, strtok
+#include <stdlib.h>		// malloc
 
 #define	CONSOLE_TX_BUFF_SIZE	2048	// 2의 승수로 지정해줄 것
 #define	CONSOLE_RX_BUFF_SIZE	256		// 2, 4, 8, 16, 32, 64, 128, 256
@@ -22,12 +24,12 @@ static uint8_t *_con_txrd_ptr, *_con_txwr_ptr;
 
 /* local static variables */
 static int32_t _con_rxlen;
-static int32_t _console_status;
 static callbackmsg_t _console_transfer_f;
 
-static char console_msg[256];
+static LIST lCommand;
 
-extern void console_DispatchMessage(int32_t msg, int32_t params);
+void console_DispatchSysMsg(int32_t sysmsg, int32_t params);
+// extern void console_DispatchMessage(int32_t msg, int32_t params);
 
 void console_RegisterMsgHandle(callbackmsg_t newf)
 {
@@ -56,7 +58,7 @@ void CONPORT_HANDLER(void)
 	{
 		CONPORT->DR;	// 읽어서 버린다(to clear USART_FLAG_IDLE bit in SR)
 
-		SendSystemMessage(_console_transfer_f, SM_RECEIVED, _con_rxlen);	// sysmsg.h
+		SendSystemMessage(console_DispatchSysMsg, SM_RECEIVED, _con_rxlen);	// sysmsg.h
 		_con_rxlen = 0;
 	}
 
@@ -74,27 +76,38 @@ void CONPORT_HANDLER(void)
 			// TX interrupt를 disable한다
 			CONPORT->CR1 &= ~USART_FLAG_TXE;
 
-			SendSystemMessage(_console_transfer_f, SM_TRANSMITTED, 0);	// sysmsg.h
+			SendSystemMessage(console_DispatchSysMsg, SM_TRANSMITTED, 0);	// sysmsg.h
 		}
 	}
 }
 
-void console_Init(void)
+void console_ProcessInit(void)
 {
 	// 초기화
 	_con_rxrd_ptr = _con_rxwr_ptr = _con_rx_buff;
 	_con_txrd_ptr = _con_txwr_ptr = _con_tx_buff;
 
-//	board_ConsoleSetSW();
+	NVIC_InitTypeDef NVIC_InitStructure;
+
+	/* Enable RXNE interrupt */
+	USART_ITConfig(CONPORT, USART_IT_RXNE, ENABLE);
+	USART_ITConfig(CONPORT, USART_IT_IDLE, ENABLE);
+
+	/* Enable USART1 global interrupt */
+//	NVIC_EnableIRQ(CONPORT_IRQ);
+
+	/* Enable the TIM5 global Interrupt for counting seconds */
+	NVIC_InitStructure.NVIC_IRQChannel = CONPORT_IRQ;
+	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 1;
+	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1;
+	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+	NVIC_Init(&NVIC_InitStructure);
 
 	// default dispatch function
-	_console_transfer_f = console_DispatchSysMsg;
+	_console_transfer_f = (void*)0;
 
-	// console을 통하여 작업할 수 있는 command를 정의한다
-//	ListInit(&_lDebugCommand, ASCENT|LINEAR);
-
-
-	// command에 해당되는 instance를 만든다
+	// 사용할 인라인 명령어를 등록한다
+	ListInit(&lCommand, ASCENT | LINEAR);
 
 /*
 	// ADD Command List
@@ -104,24 +117,7 @@ void console_Init(void)
 	pNode->pObject = &cmd_Help;
 	ListAddNodeTail(&_lDebugCommand, pNode);
 
-	pNode = (PNODE)malloc(sizeof(NODE));
-	pNode->pObject = &cmd_SetPhy;
-	ListAddNodeTail(&_lDebugCommand, pNode);
-
-	pNode = (PNODE)malloc(sizeof(NODE));
-	pNode->pObject = &cmd_GetPhy;
-	ListAddNodeTail(&_lDebugCommand, pNode);
-
-	pNode = (PNODE)malloc(sizeof(NODE));
-	pNode->pObject = &cmd_ReadPhy;
-	ListAddNodeTail(&_lDebugCommand, pNode);
 */
-	// 새로운 노드를 만든다
-//	pNode = (PNODE)malloc(sizeof(NODE));
-//	pNode->pObject = &cmd_ReadPhy;
-//	내가 응답 받을 함수의 포인터
-//	현재 지정된 transfer 함수의 포인터
-
 }
 
 
@@ -130,16 +126,6 @@ void console_Init(void)
 // ------------------------------------------------------
 int32_t console_Send(char *pbuff, int32_t size)
 {
-#ifdef	DEBUG
-	if ( _console_status != ST_CONSOLE_READY )
-	{
-		pbuff[size] = '\0';
-
-		printf("E %s", pbuff);
-		return 0;
-	}
-#endif
-
 	while( size-- )
 	{
 		*_con_txwr_ptr++ = *pbuff++;
@@ -159,13 +145,14 @@ int32_t console_printf(const char *format, ...)
 {
 	int32_t rstval;
 	va_list ap;
+	char msg[256];
 
 	va_start(ap, format);
-	rstval = vsprintf(console_msg, format, ap);
+	rstval = vsprintf(msg, format, ap);
 	va_end(ap);
 
 	if ( rstval > 0 )
-		console_Send(console_msg, rstval);
+		console_Send(msg, rstval);
 
 	return rstval;
 }
@@ -199,5 +186,30 @@ int32_t console_Recv(uint8_t *pbuff, int32_t maxsize)
 	}
 
 	return ret_size;
+}
+
+void console_DispatchSysMsg(int32_t sysmsg, int32_t params)
+{
+	if ( _console_transfer_f )
+		SendMessage(_console_transfer_f, sysmsg, params, 9);
+	else
+	{
+		switch( sysmsg )
+		{
+			case SM_RECEIVED :
+				// 수신된 내용을 읽어온다
+				// console_Recv(temp_buff32, params);
+				break;
+
+			case SM_CHILD_CLOSED :
+				// console_Send("\r\n", 2);
+				// console_Send(_str_prefix, strlen(_str_prefix));
+				break;
+
+			default :
+				;
+		}
+
+	}
 }
 

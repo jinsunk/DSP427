@@ -8,9 +8,9 @@
 #include "board.h"
 
 #include "state.h"
-// #include "console.h"
+#include "console.h"
 
-// #define	DEBUG_MSG
+#define	DEBUG_MSG
 
 
 #define	LTM_RUNLED		(LM_TIMER+1)
@@ -34,6 +34,8 @@ void syscntl_ResetHW(void)
 	printf("Hardware Ver. %ld.0\r\n", board_HwVer()+1);
 	printf("Sofrware Ver. 1.0\r\n");
 	printf("Compiled at %s\r\n", __DATE__);
+
+	console_ProcessInit();
 
 	// MemoryInit();
 
