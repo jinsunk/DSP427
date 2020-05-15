@@ -25,7 +25,7 @@ if not "%~1" == "" goto debugFile
 
 @echo on 
 
-"C:\Program Files (x86)\IAR Systems\Embedded Workbench 7.5\common\bin\cspybat" -f "D:\Projects\Promet-S\DSP427\settings\dsp427.Debug.general.xcl" --backend -f "D:\Projects\Promet-S\DSP427\settings\dsp427.Debug.driver.xcl" 
+"C:\Program Files (x86)\IAR Systems\Embedded Workbench 7.5\common\bin\cspybat" -f "D:\NEOPIS\PROMET-S\GitHub\DSP427\settings\dsp427.Debug.general.xcl" --backend -f "D:\NEOPIS\PROMET-S\GitHub\DSP427\settings\dsp427.Debug.driver.xcl" 
 
 @echo off 
 goto end 
@@ -34,7 +34,7 @@ goto end
 
 @echo on 
 
-"C:\Program Files (x86)\IAR Systems\Embedded Workbench 7.5\common\bin\cspybat" -f "D:\Projects\Promet-S\DSP427\settings\dsp427.Debug.general.xcl" "--debug_file=%~1" --backend -f "D:\Projects\Promet-S\DSP427\settings\dsp427.Debug.driver.xcl" 
+"C:\Program Files (x86)\IAR Systems\Embedded Workbench 7.5\common\bin\cspybat" -f "D:\NEOPIS\PROMET-S\GitHub\DSP427\settings\dsp427.Debug.general.xcl" "--debug_file=%~1" --backend -f "D:\NEOPIS\PROMET-S\GitHub\DSP427\settings\dsp427.Debug.driver.xcl" 
 
 @echo off 
 :end
