@@ -41,7 +41,7 @@ ShowSource=1
 Freq=10000000
 MultiCoreRunAll=1
 [DebugChecksum]
-Checksum=1084547009
+Checksum=-427418811
 [Exceptions]
 StopOnUncaught=_ 0
 StopOnThrow=_ 0
