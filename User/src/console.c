@@ -6,7 +6,7 @@
 #include "mystring.h"
 #include "getopt.h"
 
-// #define	DEBUG_MSG
+#define	DEBUG_MSG
 
 #include <stdio.h>		// for printf, vsprintf
 #include <stdarg.h>		// va_list
@@ -183,65 +183,6 @@ int32_t console_Send(char *pbuff, int32_t size)
 	return 0;
 }
 
-int32_t console_errormsg(void *vmsg)
-{
-	uint8_t vt100b[8] = { 0x1b, '[', '3', '7', ';', '4', '1', 'm' };
-	uint8_t vt100e[4] = { 0x1b, '[', '0', 'm' };
-	uint8_t vt100l[4] = { '\r', '\n' };
-
-	// 색을 붉은색으로
-	uint8_t *msg = vt100b;
-	int32_t nSize = 8;
-
-	while( nSize-- )
-	{
-		*_con_txwr_ptr++ = *msg++;
-
-		if ( _con_txwr_ptr == (_con_tx_buff + CONSOLE_TX_BUFF_SIZE) )
-			_con_txwr_ptr = _con_tx_buff;
-	}
-
-	// error message를 출력
-	msg = (uint8_t*)vmsg;
-	nSize = strlen((char const*)msg);
-
-	while( nSize-- )
-	{
-		*_con_txwr_ptr++ = *msg++;
-
-		if ( _con_txwr_ptr == (_con_tx_buff + CONSOLE_TX_BUFF_SIZE) )
-			_con_txwr_ptr = _con_tx_buff;
-	}
-
-	// 색을 원래대로
-	msg = vt100e;
-	nSize = 4;
-
-	while( nSize-- )
-	{
-		*_con_txwr_ptr++ = *msg++;
-
-		if ( _con_txwr_ptr == (_con_tx_buff + CONSOLE_TX_BUFF_SIZE) )
-			_con_txwr_ptr = _con_tx_buff;
-	}
-
-	// 줄바꿈 출력
-	msg = vt100l;
-	nSize = 2;
-
-	while( nSize-- )
-	{
-		*_con_txwr_ptr++ = *msg++;
-
-		if ( _con_txwr_ptr == (_con_tx_buff + CONSOLE_TX_BUFF_SIZE) )
-			_con_txwr_ptr = _con_tx_buff;
-	}
-
-	// TX interrupt를 enable한다
-	CONPORT->CR1 |= USART_FLAG_TXE;
-
-	return nSize;
-}
 
 int32_t console_printf(const char *format, ...)
 {
@@ -491,6 +432,8 @@ void help_Exit(void)
 	if ( pCmd->parentf )
 		SendMessage(pCmd->parentf, SM_CHILD_CLOSED, 0, 9);
 
+	console_Send("\r\n",  2);
+
 #ifdef	DEBUG_MSG
 //	console_printf("help: free var=0x%p\r\n", pCmd);
 #endif
@@ -518,7 +461,6 @@ void help_DispatchMessage(int32_t msg, int32_t params)
 				// console_printf("\t%s\r\n", pCommand->cmdstr);
 				console_Send("\t",  1);
 				console_Send(pCommand->cmdstr, strlen(pCommand->cmdstr));
-				console_Send("\r\n",  2);
 			}
 			else
 				SendMessage(help_DispatchMessage, SM_CLOSED, 0, 9);
