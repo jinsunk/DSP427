@@ -2,7 +2,7 @@
 
 "C:\Program Files (x86)\IAR Systems\Embedded Workbench 7.5\arm\bin\armstlink2.dll" 
 
-"D:\Projects\Promet-S\DSP427\Target\stm32f427xI.icf" 
+"D:\Projects\Promet-S\DSP427\Debug\Exe\dsp427.out" 
 
 --plugin "C:\Program Files (x86)\IAR Systems\Embedded Workbench 7.5\arm\bin\armbat.dll" 
 

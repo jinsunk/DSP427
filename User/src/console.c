@@ -3,6 +3,8 @@
 
 #include "console.h"
 #include "board.h"
+#include "mystring.h"
+#include "getopt.h"
 
 #define	DEBUG_MSG
 
@@ -26,14 +28,57 @@ static uint8_t *_con_txrd_ptr, *_con_txwr_ptr;
 static int32_t _con_rxlen;
 static callbackmsg_t _console_transfer_f;
 
+
+// ----------------------------------------------------------------------------
+// Inline command 관련 전역 변수
+void *pDynamicCmdVariable;
 static LIST lCommand;
+static CMDSTRING _str_command;
+static char _str_prefix[4] = "# ";
+
+
+
+void help_Entry(int argc, char *argv[]);
+void help_DispatchMessage(int32_t msg, int32_t params);
+void help_Exit(void);
+
+
+static COMMAND cmd_HELP = {
+	"help",
+	help_Entry,
+//	0
+};
+
+typedef struct {
+	int32_t mode;
+//	int32_t status;
+
+//	int32_t argc;
+	// char *argvf[];
+
+	PNODE pNode;	// command의 Node를 지시하기 위해 사용한다
+
+	// 부모를 저장
+	callbackmsg_t parentf;
+
+	// callbackf_tranceive recvf;
+	// callbackf_tranceive sendf;
+
+	// 자식에 대한 변수 베이스
+}  CmdHelp_t, *PCmdHelp_t;
+
 
 void console_DispatchSysMsg(int32_t sysmsg, int32_t params);
-// extern void console_DispatchMessage(int32_t msg, int32_t params);
+void console_DispatchMessage(int32_t msg, int32_t params);
 
 void console_RegisterMsgHandle(callbackmsg_t newf)
 {
 	_console_transfer_f = newf;
+}
+
+callbackmsg_t console_GetMsgHandle(void)
+{
+	return _console_transfer_f;
 }
 
 // for STM32F4xx CONPORT is define at board.h
@@ -104,22 +149,20 @@ void console_ProcessInit(void)
 	NVIC_Init(&NVIC_InitStructure);
 
 	// default dispatch function
-	_console_transfer_f = (void*)0;
+	_console_transfer_f = console_DispatchMessage;
 
-	// 사용할 인라인 명령어를 등록한다
+	memset(&_str_command, 0, sizeof(CMDSTRING));
+	_str_command.echo = CMDMODE_NORMAL;
+
+	// 사용할 인라인 명령어를 초기화한다
 	ListInit(&lCommand, ASCENT | LINEAR);
 
-/*
-	// ADD Command List
-	PNODE pNode;
+	// 기본적으로 help 명령어를 추가한다
+	console_AddCommand(&lCommand, &cmd_HELP);
 
-	pNode = (PNODE)malloc(sizeof(NODE));
-	pNode->pObject = &cmd_Help;
-	ListAddNodeTail(&_lDebugCommand, pNode);
-
-*/
+	// help 명령어가 있다고 console에 알려 준다
+	console_printf("type 'help' for list of usable commands\r\n");
 }
-
 
 // ------------------------------------------------------
 // interface functions
@@ -188,28 +231,249 @@ int32_t console_Recv(uint8_t *pbuff, int32_t maxsize)
 	return ret_size;
 }
 
+PCOMMAND console_FindCommand(PLIST pList, char *strcmd)
+{
+	PNODE pNode = pList->m_pNodeHead;
+	PCOMMAND pCommand;
+
+	while( pNode )
+	{
+		pCommand = (PCOMMAND)pNode->pObject;
+
+		if ( strcmp(pCommand->cmdstr, strcmd) == 0 )
+		{
+			// 찾았을 때
+			return pCommand;
+		}
+		else
+			pNode = pNode->pNext;
+	}
+
+	return (void*)0;	// 못 찾았을 때
+}
+
+int console_AddCommand(PLIST pList, PCOMMAND pCommand)
+{
+	PNODE pNewNode;
+
+	// NODE를 만든다
+	pNewNode = (PNODE)malloc(sizeof(NODE));
+
+	if ( pNewNode )
+	{
+		pNewNode->pObject = pCommand;
+		ListAddNodeTail(pList, pNewNode);
+	}
+
+	return 0;
+}
+
 void console_DispatchSysMsg(int32_t sysmsg, int32_t params)
 {
 	if ( _console_transfer_f )
 		SendMessage(_console_transfer_f, sysmsg, params, 9);
-	else
-	{
-		switch( sysmsg )
-		{
-			case SM_RECEIVED :
-				// 수신된 내용을 읽어온다
-				// console_Recv(temp_buff32, params);
-				break;
+}
 
-			case SM_CHILD_CLOSED :
-				// console_Send("\r\n", 2);
-				// console_Send(_str_prefix, strlen(_str_prefix));
+void console_DispatchMessage(int32_t msg, int32_t params)
+{
+	uint8_t temp_buff[16];
+
+	switch ( msg )
+	{
+		case SM_RECEIVED :
+			// 수신된 내용을 읽어온다
+			while ( console_RecvSize() )
+			{
+				params = console_Recv(temp_buff, 16);
+				switch( input_strcmd(&_str_command, params, (char*)temp_buff) )
+				{
+					case COMMAND_ENTER :
+						if ( _str_command.length )
+						{
+							int argc;
+							char *argv[16];
+
+							if ( _str_command.ret_len )
+								console_Send(_str_command.ret_str, _str_command.ret_len);
+
+							// command list에서 입력된 문자열이 있는가 검사한다
+							argc = getArguements(argv, _str_command.buff);
+							if ( argc && argv[0] )
+							{
+								// command list에서 _argv[0]에 해당되는 명령어를 찾는다
+								PCOMMAND pCommand = console_FindCommand(&lCommand, argv[0]);
+
+								if ( pCommand )
+								{	// 찾았을 때
+									// entry 함수를 실행한다
+									pCommand->entryf(argc, argv);
+								}
+								else
+								{	// 못 찾았을 때
+									console_printf("\r\ncommand not found\r\n");
+									console_Send(_str_prefix, strlen(_str_prefix));
+								}
+							}
+
+							// 기존의 데이터를 지운다
+							clear_strcmd(&_str_command);
+						}
+						else
+						{	// 아무런 문자가 없이 리턴만 돌아 왔을 때
+							// prefix 문자를 표시한다
+							console_Send("\r\n", 2);
+							console_Send(_str_prefix, strlen(_str_prefix));
+						}
+						break;
+
+					case COMMAND_CANCEL :
+						// 기존의 데이터를 지운다
+						clear_strcmd(&_str_command);
+
+						// 다음줄로 넘긴다
+						console_Send("\r\n", 2);
+						console_Send(_str_prefix, strlen(_str_prefix));
+						break;
+
+					case COMMAND_PREVIOUS :
+						//
+						break;
+
+					case COMMAND_NEXT :
+						break;
+
+					default :
+						// 송신할 데이터가 있다면 송신한다
+						if ( _str_command.ret_len )
+							console_Send(_str_command.ret_str, _str_command.ret_len);
+				}
+			}
+			break;
+
+		case SM_TRANSMITTED :
+			break;
+
+		case SM_CHILD_CLOSED :
+			console_Send("\r\n", 2);
+			console_Send(_str_prefix, strlen(_str_prefix));
+			break;
+
+		default :
+			;
+	}
+}
+
+// --------------------------------------------------------------------------
+// --------------------------------------------------------------------------
+// help command functions
+// --------------------------------------------------------------------------
+// --------------------------------------------------------------------------
+void help_Entry(int argc, char *argv[])
+{
+	/* 반드시 들어가야 할 부분 */
+	// 필요한 변수를 heap 영역에 할당한다
+	PCmdHelp_t pCmd = (PCmdHelp_t)malloc(sizeof(CmdHelp_t));
+
+#ifdef	DEBUG_MSG
+//	console_printf("memset: malloc var=0x%p\r\n", pCmd);
+#endif
+
+	// Dynamic 변수의 시작 번지를 보관한다
+	pDynamicCmdVariable = pCmd;
+
+	// 할당된 변수를 모두 초기화 한다
+	if ( pCmd )	memset(pCmd, 0, sizeof(CmdHelp_t) );
+
+	// 부모를 저장한다
+	pCmd->parentf = console_GetMsgHandle();
+
+	// 송수신 이벤트를 이 함수를 지정한다
+	console_RegisterMsgHandle(help_DispatchMessage);
+
+	pCmd->mode = 1;
+
+	int c;
+
+	while( (c = getopt(argc, argv, "h")) != -1)
+	{
+		// -1 means getopt() parse all options
+		switch(c) {
+			case 'h':
+				console_printf("help - show all usable commands\r\n");
+				pCmd->mode = 0;
 				break;
 
 			default :
 				;
 		}
+	}
 
+	if ( pCmd->mode )
+	{
+		pCmd->pNode = lCommand.m_pNodeHead;
+
+		console_printf("commands\r\n");
+
+		SendMessage(help_DispatchMessage, SM_INITIALIZED, 0, 9);
+	}
+	else	// -h option을 수행 후  작업 끝으로 간다
+		SendMessage(help_DispatchMessage, SM_CLOSED, 0, 9);
+
+}
+
+void help_Exit(void)
+{
+	PCmdHelp_t pCmd = (PCmdHelp_t)pDynamicCmdVariable;
+
+	// 부모를 복원한다
+	console_RegisterMsgHandle(pCmd->parentf);
+
+	// 부모에게 작업이 끝났음을 알린다
+	if ( pCmd->parentf )
+		SendMessage(pCmd->parentf, SM_CHILD_CLOSED, 0, 9);
+
+	console_Send("\r\n",  2);
+
+#ifdef	DEBUG_MSG
+//	console_printf("help: free var=0x%p\r\n", pCmd);
+#endif
+
+	// heap 영역에 할당된 변수를 지운다
+	if ( pCmd ) free(pCmd);
+}
+
+void help_DispatchMessage(int32_t msg, int32_t params)
+{
+	PCmdHelp_t pCmd = (PCmdHelp_t)pDynamicCmdVariable;
+
+	switch( msg )
+	{
+		case SM_TRANSMITTED :
+			pCmd->pNode = pCmd->pNode->pNext;
+			SendMessage(help_DispatchMessage, SM_INITIALIZED, 0, 9);
+			break;
+
+		case SM_INITIALIZED :
+			if ( pCmd->pNode )	// list에 값이 존재하면
+			{
+				PCOMMAND pCommand = (PCOMMAND)pCmd->pNode->pObject;
+
+				// console_printf("\t%s\r\n", pCommand->cmdstr);
+				console_Send("\t",  1);
+				console_Send(pCommand->cmdstr, strlen(pCommand->cmdstr));
+			}
+			else
+				SendMessage(help_DispatchMessage, SM_CLOSED, 0, 9);
+			break;
+
+		case SM_CLOSED :
+			help_Exit();
+			break;
+
+		default :
+			// status에 따라 작업을 진행한다
+			;
 	}
 }
 
+// --------------------------------------------------------------------------

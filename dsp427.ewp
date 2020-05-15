@@ -1949,10 +1949,16 @@
   <group>
     <name>Common</name>
     <file>
+      <name>$PROJ_DIR$\Common\src\getopt.c</name>
+    </file>
+    <file>
       <name>$PROJ_DIR$\Common\src\list.c</name>
     </file>
     <file>
       <name>$PROJ_DIR$\Common\src\main.c</name>
+    </file>
+    <file>
+      <name>$PROJ_DIR$\Common\src\mystring.c</name>
     </file>
     <file>
       <name>$PROJ_DIR$\Common\src\procmsg.c</name>
